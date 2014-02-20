@@ -50,6 +50,7 @@ public:
 
 class tGame{
 public:
+    int decimal(unsigned char s[]);
     tExperiment theExperiment;
     void loadExperiment(char *filename);
     string executeGame(vector<tAgent*> swarmAgents, tAgent* predatorAgent, FILE *data_file, bool report, double startingDist, double predatorVisionRange, double predatorVisionAngle, int killDelay, int numPredators);
