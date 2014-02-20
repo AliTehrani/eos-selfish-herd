@@ -272,7 +272,7 @@ void tGame::applyBoundary(double& positionVal)
      positionVal = val;
  }*/
 
-// calculates the distance^2 between two points (toroidal world)
+/*// calculates the distance^2 between two points (toroidal world)
 double tGame::calcDistanceSquared(double fromX, double fromY, double toX, double toY)
 {
     double diffX = fabs(fromX - toX);
@@ -289,16 +289,16 @@ double tGame::calcDistanceSquared(double fromX, double fromY, double toX, double
     }
     
     return ( diffX * diffX ) + ( diffY * diffY );
-}
+}*/
 
-/*// calculates the distance^2 between two points
+// calculates the distance^2 between two points
 double tGame::calcDistanceSquared(double fromX, double fromY, double toX, double toY)
 {
     double diffX = fromX - toX;
     double diffY = fromY - toY;
     
     return ( diffX * diffX ) + ( diffY * diffY );
-}*/
+}
 
 double maxFT = 0, maxST = 0, minFT = 0, minST = 0;
 int ct = 0;
