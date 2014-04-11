@@ -20,35 +20,35 @@
  */
 
 #include "tGame.h"
-#include <math.h>
-#include <float.h>
-#include <stdlib.h>
-#include <stdio.h>
-//#include <iostream.h>
-//#include <time.h>
-//#include <fstream.h>
-
 
 #define cPI 3.14159265
 
 // simulation-specific constants
-#define preyVisionRange         200.0 * 200.0
-#define preyVisionAngle         360.0 / 2.0
-#define preySensors             24
-#define totalStepsInSimulation  1000
-#define gridX                   384.0
-#define gridY                   384.0
+#define visionRange	        60.0 * 60.0
+#define visionAngle    		360.0 / 2.0
+#define agentSensors            24
+#define totalStepsInSimulation  2500
+#define gridX                   400.0
+#define gridY                   400.0
 #define gridXAcross             2.0 * gridX
 #define gridYAcross             2.0 * gridY
-#define collisionDist           5.0 * 5.0
-#define boundaryDist            gridX - sqrt(collisionDist)
+#define collisionDist           10.0 * 10.0
+#define boundaryDist            gridX - sqrt(collisionDist)/2.0
+#define boundaryVision		gridX - sqrt(visionRange)
 #define stepsUntilPredation     250
+#define nodesAgents		12
+#define boundaryVision          gridX - sqrt(visionRange)
+#define nodesBoundary           12
 
-#define swarmSize               100
-#define V                       0.2
+#define V                       5
 #define dTheta                  6.0
-#define dTime                   0.05
-#define penalty					1.0
+#define dTime                   0.1
+#define fitnessInit             0.0
+#define penaltyCollision	0.0
+#define penaltyWall             0.0
+#define penaltyStay             0.0
+#define penaltyTurn             0.0
+#define reward                  10.0
 
 // precalculated lookup tables for the game
 double cosLookup[360];
@@ -57,7 +57,7 @@ double atan2Lookup[2400][2400];
 
 tGame::tGame()
 {
-    // fill lookup tables
+  /*    // fill lookup tables
     for (int i = 0; i < 360; ++i)
     {
         cosLookup[i] = cos((double)i * (cPI / 180.0));
@@ -70,7 +70,7 @@ tGame::tGame()
         {
             atan2Lookup[i][j] = atan2(i - 1200, j - 1200) * 180.0 / cPI;
         }
-    }
+	}*/
 }
 
 tGame::~tGame() { }
@@ -79,145 +79,348 @@ tGame::~tGame() { }
 string tGame::executeGame(vector<tAgent*> swarmAgents, FILE *data_file, bool report, bool collision, double startingDist, int killDelay)
 {
   string reportString = "";
-
-  // set up the prey agents from swarmAgents (above)
-  //FYI swarmAgents[0]->fitness;
+  //  srand(time(0));
   
-  // loop the following for x number of updates
-
-  // fill in the Markov Network sensors for each swarmAgent
-
-  // execute updateStates() for each swarmAgent
-
-  // get outputs from each swarmAgent and have that encode some action
-  //swarmAgents[i]->states[maxNodes - 1];
-  //swarmAgents[i]->states[maxNodes - 2];
-
-  // evaluate fitness for that update
-  // if they collide, lose fitness
-  // if they move without collision, gain small amount of fitness
-  
-  // make sure each swarmAgent has its fitness assigned
-  //FYI  swarmAgents[i]->fitness = some value;
-
-    enum Action {move=0, stay, left, right};
+  enum Action {stay=0, left, right, move};
     Action action;
-    //    const int height=1, width=1;
-    //    const flyDiam=0.01, V=0.3, rSight=0.1, thetaSight=pi, dTime=0.1, dTheta=6*pi/180.0;
-    //    double distance, penalty=member[1].fitness/double(nIteration);
-
-//    ofstream trajectory("trajectory.txt");
-
-    //    int st[2];
     int i, j;
-    int repeat;
-    //cout<<(rand()%int(width/flyDiam))*flyDiam<<endl;
-//  Initial placement
-    for (j=1; j<=swarmSize; j++){
-      swarmAgents[j]->xPos=randDouble*(gridX-2*collisionDist)+collisionDist;//      member[j].x[0]=(rand()%int(width/flyDiam))*flyDiam;
-      swarmAgents[j]->yPos=randDouble*gridY;//      member[j].y[0]=(rand()%int(height/flyDiam))*flyDiam;
-      //      member[j].fitness=nSwarm;
-//   Check if positions overlap
+    int repeat, numberCollisions=0;
+    double xTemp, yTemp;
+    ostringstream sstm;
+    sstm << "timeStep, x, y, direction, fitness\n";
+
+//Initial placement
+    for (int j=0; j<=swarmSize-1; j++){
+//check if positions overlap
+      int repeat;
       do{
+	swarmAgents[j]->xPos = rand()%int(gridX-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
+	swarmAgents[j]->yPos = rand()%int(gridY-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
 	repeat=0;
-	for (int m=1; m<=j-1; m++){
-	  //double
-	  if (sqrt(pow(swarmAgents[j]->xPos-swarmAgents[m]->xPos, 2)+pow(swarmAgents[j]->yPos-swarmAgents[m]->yPos, 2))<collisionDist){
+	for (int m=0; m<=j-1; m++){
+	  if (calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[m]->xPos, swarmAgents[m]->yPos)<=collisionDist){
 	    repeat=1;
 	    break;
 	  }
 	}
       }while(repeat==1);
-
-      swarmAgents[j]->direction=(rand()%60)*6*cPI/180.0;
-      //cout<<member[j].x[0]<<'\t'<<member[j].y[0]<<'\t'<<member[j].theta<<endl;
+      swarmAgents[j]->direction = (rand()%60)*6;
+      swarmAgents[j]->fitness = fitnessInit;
+      sstm << "0, " << swarmAgents[j]->xPos << ", " <<swarmAgents[j]->yPos << ", " << swarmAgents[j]->direction << ", " << swarmAgents[j]->fitness << '\n';
     }
-
+    
 //  Iterating...
-    for (i=1; i<=totalStepsInSimulation; i++){
-      for (j=1; j<=swarmSize; j++){
-	//	st[0]=rand()%2;
-	//	st[1]=rand()%2;
-	//cout<<st[1]<<'\t'<<st[0]<<endl;
-	//	action=static_cast<Action>(decimal(st));
-    //    action=static_cast<Action>(decimal(swarmAgents[i]->states));
-	//cout<<i<<'\t'<<action<<endl;
-	switch (((swarmAgents[i]->states[maxNodes-2]>>1)&1)
-			+(swarmAgents[i]->states[maxNodes-1]&1)
-			){
-	case move:
-	  {
-	    swarmAgents[j]->xPos = swarmAgents[j]->xPos+V*cos(swarmAgents[j]->direction)*dTime;
-	    swarmAgents[j]->yPos = swarmAgents[j]->yPos+V*sin(swarmAgents[j]->direction)*dTime;
-	  }
+    for (i=1; i<=totalStepsInSimulation-1; i++){
+      senseStates(swarmAgents);
+      for (j=0; j<=swarmSize-1; j++){
+
+	swarmAgents[j]->updateStates();
+	action = static_cast<Action>((int)(swarmAgents[j]->states[maxNodes-2])*2+(int)(swarmAgents[j]->states[maxNodes-1]));
+	switch (action){
 	case stay:
 	  {
-            swarmAgents[j]->xPos = swarmAgents[j]->xPos+V*cos(swarmAgents[j]->direction)*dTime;
-            swarmAgents[j]->yPos = swarmAgents[j]->yPos+V*sin(swarmAgents[j]->direction)*dTime;
-	    //	    member[j].x[i]=member[j].x[i-1];
-	    //	    member[j].y[i]=member[j].y[i-1];
+	    swarmAgents[j]->fitness -= penaltyStay;
+	    if (swarmAgents[j]->fitness <= 0)
+	      swarmAgents[j]->fitness = 1.0;
+	    continue;
 	  }
 	case left:
 	  {
-            swarmAgents[j]->direction +=dTheta;  
-            swarmAgents[j]->xPos = swarmAgents[j]->xPos+V*cos(swarmAgents[j]->direction)*dTime;
-            swarmAgents[j]->yPos = swarmAgents[j]->yPos+V*sin(swarmAgents[j]->direction)*dTime;
-	    //	    member[j].theta +=dTheta;
-	    //	    member[j].x[i] = member[j].x[i-1]+V*cos(member[j].theta)*dTime;
-	    //	    member[j].y[i] = member[j].y[i-1]+V*sin(member[j].theta)*dTime;
+	    swarmAgents[j]->direction = (int)(swarmAgents[j]->direction+dTheta)%360;
+	    break;
 	  }
 	case right:
 	  {
-	    swarmAgents[j]->direction -=dTheta;
-	    swarmAgents[j]->xPos = swarmAgents[j]->xPos+V*cos(swarmAgents[j]->direction)*dTime;
-	    swarmAgents[j]->yPos = swarmAgents[j]->yPos+V*sin(swarmAgents[j]->direction)*dTime;
+	    swarmAgents[j]->direction = (int)(swarmAgents[j]->direction-dTheta+360)%360;
+	    break;
+	  }
+	case move:
+	  {
+	    //	    swarmAgents[j]->xPos += V*cos(swarmAgents[j]->direction/180.0*cPI)*dTime;
+	    //	    swarmAgents[j]->yPos += V*sin(swarmAgents[j]->direction/180.0*cPI)*dTime;
 	  }
 	}
-	//Domain boundaries
-	if (swarmAgents[j]->xPos-collisionDist/2.0>=gridX){
-	  swarmAgents[j]->xPos= 2*gridX-swarmAgents[j]->xPos;
-	  swarmAgents[j]->direction=cPI-swarmAgents[j]->direction;
+	xTemp = swarmAgents[j]->xPos + V*cos(swarmAgents[j]->direction/180.0*cPI)*dTime;
+	yTemp = swarmAgents[j]->yPos + V*sin(swarmAgents[j]->direction/180.0*cPI)*dTime;
+	//        if (swarmAgents[j]->fitness <= 0)
+	//swarmAgents[j]->fitness = 1.0;
+//Walls: no entrance
+/*	if (xTemp >= boundaryDist)
+	  swarmAgents[j]->xPos = boundaryDist;
+	else if (xTemp <= sqrt(collisionDist)/2.0)
+	  swarmAgents[j]->xPos = sqrt(collisionDist)/2.0;
+	else if (yTemp >= boundaryDist)
+	  swarmAgents[j]->yPos = boundaryDist;
+	else if (yTemp <= sqrt(collisionDist)/2.0)
+	  swarmAgents[j]->yPos = sqrt(collisionDist)/2.0;
+        else{
+	  swarmAgents[j]->xPos = xTemp;
+	  swarmAgents[j]->yPos = yTemp;
+	  swarmAgents[j]->fitness += reward;
+	  }*/
+	   
+//Walls: bounce back
+	if (xTemp >= boundaryDist){
+	  swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
+          swarmAgents[j]->xPos = 2*boundaryDist - swarmAgents[j]->xPos;
+	  swarmAgents[j]->fitness -= penaltyWall;
+	  if (swarmAgents[j]->fitness <= 0)
+	    swarmAgents[j]->fitness = 1.0;
+          swarmAgents[j]->xPos = 2*boundaryDist - swarmAgents[j]->xPos;
+	}
+        else if (xTemp <= sqrt(collisionDist)/2.0){
+          swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
+          swarmAgents[j]->xPos = sqrt(collisionDist) - swarmAgents[j]->xPos;
+          swarmAgents[j]->fitness -= penaltyWall;
+          if (swarmAgents[j]->fitness <= 0)
+            swarmAgents[j]->fitness = 1.0;
+	}
+        else if (yTemp >= boundaryDist){
+	  swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
+          swarmAgents[j]->yPos = 2*boundaryDist - swarmAgents[j]->yPos;
+          swarmAgents[j]->fitness -= penaltyWall;
+          if (swarmAgents[j]->fitness <= 0)
+            swarmAgents[j]->fitness = 1.0;
+          swarmAgents[j]->yPos = 2*boundaryDist - swarmAgents[j]->yPos;
+	}
+        else if (yTemp <= sqrt(collisionDist)/2.0){
+	  swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
+          swarmAgents[j]->yPos = sqrt(collisionDist) - swarmAgents[j]->yPos;
+          swarmAgents[j]->fitness -= penaltyWall;
+          if (swarmAgents[j]->fitness <= 0)
+            swarmAgents[j]->fitness = 1.0;
+          swarmAgents[j]->yPos = sqrt(collisionDist) - swarmAgents[j]->yPos;
+	}
+        else{
+          swarmAgents[j]->xPos = xTemp;
+          swarmAgents[j]->yPos = yTemp;
+          swarmAgents[j]->fitness += reward;
+	}
+	//        if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
+	//	  swarmAgents[j]->xPos = xTemp;
+	//	  swarmAgents[j]->yPos = yTemp;
+	//	  swarmAgents[j]->fitness += reward;
+	//        }
+	//        else{
+	//  swarmAgents[j]->fitness -= penaltyWall;
+        //  if (swarmAgents[j]->fitness <= 0)
+	//    swarmAgents[j]->fitness = 1.0;
+	//  if ((xTemp >= boundaryDist)||(xTemp <= sqrt(collisionDist)/2.0)){
+	//    swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
+	//  }
+	//  else{//if ((swarmAgents[j]->yPos[i] >= gridY)||(swarmAgents[j]->yPos <= 0)){
+	//    swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
+	//  }
+	//}
 
-	}
-	if (swarmAgents[j]->yPos-collisionDist/2.0>=gridY){
-	  swarmAgents[j]->yPos= 2*gridY-swarmAgents[j]->yPos;
-	  swarmAgents[j]->direction=-swarmAgents[j]->direction;
-	}
-	if (swarmAgents[j]->xPos<=0){
-	  swarmAgents[j]->xPos= -swarmAgents[j]->xPos;
-	  swarmAgents[j]->direction=cPI-swarmAgents[j]->direction;
-	}
-	if (swarmAgents[j]->yPos<=0){
-	  swarmAgents[j]->yPos=-swarmAgents[j]->yPos;
-	  swarmAgents[j]->direction=-swarmAgents[j]->direction;
-	}
-
-	//if (j==1)
-	//cout<<member[j].x[i]<<'\t'<<member[j].y[i]<<'\n';
       }
-      //Collisions
-      for (int m=1; m<=swarmSize-1; m++){
-	for (int n=m+1; n<=swarmSize; n++){
-		if (sqrt(pow(swarmAgents[m]->xPos-swarmAgents[n]->xPos, 2)+pow(swarmAgents[m]->yPos-swarmAgents[n]->yPos, 2))<=collisionDist){
-	    swarmAgents[m]->fitness -= penalty;
-	    swarmAgents[n]->fitness -= penalty;
-	    //cout<<member[m].y[i]<<'\t'<<member[n].y[i]<<'\t'<<distance<<endl;
+//Collisions
+      for (int m=0; m<=swarmSize-2; m++){
+	for (int n=m+1; n<=swarmSize-1; n++){
+	  double distance2 = calcDistanceSquared(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
+	  if (distance2 <= collisionDist){
+            numberCollisions++;
+	    swarmAgents[m]->fitness -= penaltyCollision;
+	    swarmAgents[n]->fitness -= penaltyCollision;
+            if (swarmAgents[m]->fitness <= 0)
+              swarmAgents[m]->fitness = 1.0;
+	    if (swarmAgents[n]->fitness <= 0)
+	      swarmAgents[n]->fitness = 1.0;
+
+//No overlap
+/*
+	    xTemp = swarmAgents[m]->xPos - (V*dTime)*cos(swarmAgents[m]->direction/180.0*cPI);
+	    yTemp = swarmAgents[m]->yPos - (V*dTime)*sin(swarmAgents[m]->direction/180.0*cPI);
+
+	    action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-2])*2+(int)(swarmAgents[m]->states[maxNodes-1]));
+	    if (action!=stay){
+	      if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
+		swarmAgents[m]->xPos -= V*cos(swarmAgents[m]->direction/180.0*cPI)*dTime;
+		swarmAgents[m]->yPos -= V*sin(swarmAgents[m]->direction/180.0*cPI)*dTime;
+	      }
+	    }
+
+            xTemp = swarmAgents[n]->xPos - (V*dTime)*cos(swarmAgents[n]->direction/180.0*cPI);
+            yTemp = swarmAgents[n]->yPos - (V*dTime)*sin(swarmAgents[n]->direction/180.0*cPI);
+
+            action = static_cast<Action>((int)(swarmAgents[n]->states[maxNodes-2])*2+(int)(swarmAgents[n]->states[maxNodes-1]));
+	    if (action!=stay){
+              if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
+                swarmAgents[n]->xPos = xTemp;//V*cos(swarmAgents[n]->direction/180.0*cPI)*dTime;
+                swarmAgents[n]->yPos = yTemp;//V*sin(swarmAgents[n]->direction/180.0*cPI)*dTime;
+              }
+	    }
+*/
+//BounceBack
+
+            swarmAgents[m]->direction = bounceBackAngle(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[m]->direction, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
+	    swarmAgents[n]->direction = bounceBackAngle(swarmAgents[n]->xPos, swarmAgents[n]->yPos, swarmAgents[n]->direction, swarmAgents[m]->xPos, swarmAgents[m]->yPos);
+	    action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-2])*2+(int)(swarmAgents[m]->states[maxNodes-1]));
+	    //	    if (action!=stay){
+	    //              swarmAgents[m]->xPos += (V*dTime-sqrt(distance2))*cos(swarmAgents[m]->direction/180.0*cPI);
+	    //              swarmAgents[m]->yPos += (V*dTime-sqrt(distance2))*sin(swarmAgents[m]->direction/180.0*cPI);
+	    //            }
 	  }
 	}
+      }
+
+//Writing to string
+      for (j=0; j<=swarmSize-1; j++){
+	sstm << i << ", " << swarmAgents[j]->xPos << ", " << swarmAgents[j]->yPos << ", " << swarmAgents[j]->direction << ", " << swarmAgents[j]->fitness << '\n';
       }
 
     }
-    /*
-    //Writing to file
-    for (j=1; j<=nSwarm; j++){
-      trajectory<<"zone"<<endl;
-      cout<<member[j].fitness<<endl;
-      for (i=0; i<=nIteration; i++){
-	trajectory<<member[j].x[i]<<'\t'<<member[j].y[i]<<'\n';
+
+    if (data_file!=NULL){
+      // output fitness and # of collisions to data_file
+
+      double avgSwarmFitness = 0.0;
+      for (int j = 0; j <= swarmSize-1; j++)
+	{
+	  avgSwarmFitness += swarmAgents[j]->fitness;
+	}
+      avgSwarmFitness /= (double)swarmSize;
+      
+      fprintf(data_file, "%d,%f,%d\n", swarmAgents[0]->born, avgSwarmFitness, numberCollisions);
+    }
+
+    reportString = sstm.str();
+    return reportString;
+}
+void tGame::senseStates(vector<tAgent*> swarmAgents){
+  //Filling states vector
+  for (int j=0; j<=swarmSize-1; j++){
+    //zeroing states vector
+    for (int l=0; l<nodesBoundary+nodesAgents; l++){
+      swarmAgents[j]->states[l]=0;
+    }
+    //Sensing other agents
+    for (int k=0; k<=swarmSize-1; k++){
+      if (j==k)
+	continue;
+      if (calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[k]->xPos, swarmAgents[k]->yPos)<visionRange){
+	int relativeAngle=calcAngle(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[j]->direction, swarmAgents[k]->xPos, swarmAgents[k]->yPos);
+	int initAngle=(relativeAngle+90)%360;
+	int sensePos=(initAngle)/(visionAngle/nodesAgents);
+	if (sensePos<nodesAgents)
+	  swarmAgents[j]->states[sensePos]=1;	
       }
     }
-    */
-  return reportString;
+
+    //Sensing domain boundaries
+    int boundaryAngle;
+    int sensePosInit=nodesAgents;
+    int sensePosFin= nodesAgents + nodesBoundary - 1;
+    int visionAngleInit=((int)swarmAgents[j]->direction - 90+360)%360;
+    int visionAngleFin=((int)swarmAgents[j]->direction + 90)%360;
+    //Rightside wall
+    if (swarmAgents[j]->xPos>=boundaryVision){
+      boundaryAngle=acos((gridX-swarmAgents[j]->xPos)/sqrt(visionRange))*180.0/cPI;
+
+      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
+      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
+      if ((swarmAgents[j]->direction<=boundaryAngle+90)&&(swarmAgents[j]->direction>=90-boundaryAngle)){
+	sensePosFin -= (int)((visionAngleFin-boundaryAngle)/(visionAngle/nodesBoundary));
+      }
+      else if ((swarmAgents[j]->direction>=360-boundaryAngle-90)&&(swarmAgents[j]->direction<=360-90+boundaryAngle)){
+	sensePosInit += (int)((360-boundaryAngle-visionAngleInit)/(visionAngle/nodesBoundary));
+      }
+      else {
+	sensePosInit += (int)((360-boundaryAngle-visionAngleInit)/(visionAngle/nodesBoundary));
+	sensePosFin -= (int)((visionAngleFin-boundaryAngle)/(visionAngle/nodesBoundary));
+      }
+      
+      for (int l=sensePosInit; l<=sensePosFin; l++){
+	swarmAgents[j]->states[l]=1;
+      }
+      //}
+    }
+    //Upside wall
+    sensePosInit=nodesAgents;
+    sensePosFin= nodesAgents + nodesBoundary - 1;
+    if (swarmAgents[j]->yPos>=boundaryVision){
+      boundaryAngle=acos((gridX-swarmAgents[j]->yPos)/sqrt(visionRange))*180.0/cPI;
+      //      cout<<"boundary angle: "<<boundaryAngle<<'\n';
+
+      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
+      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
+      if ((swarmAgents[j]->direction>=90-boundaryAngle+90)&&(swarmAgents[j]->direction<=90+boundaryAngle+90)){
+	sensePosFin -= (int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary));
+	//	cout<<1<<'\t'<<(int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary))<<'\t'<<sensePosFin<<'\n';
+      }
+      else if ((swarmAgents[j]->direction<=boundaryAngle)||(swarmAgents[j]->direction>=360-boundaryAngle)){
+	sensePosInit += (int)((180-visionAngleFin+90-boundaryAngle)/(visionAngle/nodesBoundary));
+	//	cout<<2<<'\t'<<(int)(90-boundaryAngle-(swarmAgents[j]->direction-90))<<'\t'<<sensePosInit<<'\n';
+      }
+      else {
+	sensePosInit += (int)((180-visionAngleFin+90-boundaryAngle)/(visionAngle/nodesBoundary));
+	sensePosFin -= (int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary));
+	//	cout<<3<<'\t'<<sensePosInit<<'\t'<<sensePosFin<<'\n';
+      }
+
+      for (int l=sensePosInit; l<=sensePosFin; l++){
+	swarmAgents[j]->states[l]=1;
+      }
+      //}
+    }
+    
+
+    //Leftside wall
+    sensePosInit=nodesAgents;
+    sensePosFin= nodesAgents + nodesBoundary - 1;
+    if (swarmAgents[j]->xPos<sqrt(visionRange)){
+      boundaryAngle=acos((swarmAgents[j]->xPos)/sqrt(visionRange))*180.0/cPI;
+
+      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
+      if ((swarmAgents[j]->direction<=180+boundaryAngle+90)&&(swarmAgents[j]->direction>=180-boundaryAngle+90)){
+	sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
+      }
+      else if ((swarmAgents[j]->direction>=180-boundaryAngle-90)&&(swarmAgents[j]->direction<=180+boundaryAngle-90)){
+	sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
+      }
+      else {
+	sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
+	sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
+      }
+      
+      for (int l=sensePosInit; l<=sensePosFin; l++){
+	swarmAgents[j]->states[l]=1;
+      }
+      //}
+    }
+    //Lower wall
+    sensePosInit=nodesAgents;
+    sensePosFin= nodesAgents + nodesBoundary - 1;
+    if (swarmAgents[j]->yPos<=sqrt(visionRange)){
+      boundaryAngle=acos((swarmAgents[j]->yPos)/sqrt(visionRange))*180.0/cPI;
+      //      cout<<"boundary angle: "<<boundaryAngle<<'\n';
+
+      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
+      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
+      if ((swarmAgents[j]->direction>=90-boundaryAngle+90)&&(swarmAgents[j]->direction<=90+boundaryAngle+90)){
+	sensePosInit += (int)((270-boundaryAngle-swarmAgents[j]->direction+90)/(visionAngle/nodesBoundary));
+      }
+      else if ((swarmAgents[j]->direction<=boundaryAngle)||(swarmAgents[j]->direction>=360-boundaryAngle)){
+	sensePosFin -= (int)((180-270-boundaryAngle+visionAngleInit)/(visionAngle/nodesBoundary));
+      }
+      else {
+	sensePosInit += (int)((270-boundaryAngle-swarmAgents[j]->direction+90)/(visionAngle/nodesBoundary));
+	sensePosFin -= (int)((180-270-boundaryAngle+visionAngleInit)/(visionAngle/nodesBoundary));
+      }
+      
+      for (int l=sensePosInit; l<=sensePosFin; l++){
+	swarmAgents[j]->states[l]=1;
+      }
+      //}
+    }
+  }
+}
+
+//Bounce back angle
+double tGame::bounceBackAngle(double x1, double y1, double theta, double x2, double y2){
+  double gamma = atan2(y2-y1, x2-x1)*180.0/cPI;
+  double bb = int(2*gamma - theta+540)%360;
+  return(bb);
 }
 
 //Function for decimal transform
@@ -307,24 +510,36 @@ int ct = 0;
 double tGame::calcAngle(double fromX, double fromY, double fromAngle, double toX, double toY)
 {
     double Ux = 0.0, Uy = 0.0, Vx = 0.0, Vy = 0.0;
-    
+
     Ux = (toX - fromX);
     Uy = (toY - fromY);
-    
-    Vx = cosLookup[(int)fromAngle];
-    Vy = sinLookup[(int)fromAngle];
-    
-    int firstTerm = (int)((Ux * Vy) - (Uy * Vx));
-    int secondTerm = (int)((Ux * Vx) + (Uy * Vy));
-    
+
+    Vx = cos(fromAngle/180.0*cPI);
+    Vy = sin(fromAngle/180.0*cPI);
+    //cout<<fromAngle<<'\n';
+
+    double firstTerm = (-(Ux * Vy) + (Uy * Vx));
+    double secondTerm = ((Ux * Vx) + (Uy * Vy));
+    //double theta=atan2(Uy, Ux)*180.0/cPI - fromAngle;
+    //cout<<Uy<<'\t'<<Ux<<'\n';
+    //cout<<firstTerm<<'\t'<<secondTerm<<'\n';
+
+    //    return atan2(firstTerm, secondTerm) * 180.0 / cPI;
+    double theta = atan2(firstTerm, secondTerm) * 180.0 / cPI;
+    if (theta>=0)
+      return theta;
+    else
+      return 360+theta;
+
+    /*
     if (fabs(firstTerm) < 1200 && fabs(secondTerm) < 1200)
     {
-        return atan2Lookup[firstTerm + 1200][secondTerm + 1200];
+        return atan2(firstTerm + 1200, secondTerm + 1200);
     }
     else
     {
         return atan2(firstTerm, secondTerm) * 180.0 / cPI;
-    }
+	}*/
 }
 
 // calculates the center of the swarm and stores it in (cX, cY)
@@ -347,7 +562,7 @@ void tGame::calcSwarmCenter(double preyX[], double preyY[], bool preyDead[], dou
     preyCenterX /= (double)aliveCount;
     preyCenterY /= (double)aliveCount;
 }
-
+/*
 // recalculates the prey distance lookup tables
 void tGame::recalcPreyDistTable(double preyX[], double preyY[], bool preyDead[],
                                 double preyToPreyDists[swarmSize][swarmSize])
@@ -369,7 +584,8 @@ void tGame::recalcPreyDistTable(double preyX[], double preyY[], bool preyDead[],
         }
     }
 }
-
+*/
+ /*
 // recalculates the prey distance lookup tables only for a given prey
 void tGame::recalcPreyDistTableForOnePrey(double preyX[], double preyY[], bool preyDead[],
                                           double preyToPreyDists[swarmSize][swarmSize],
@@ -384,7 +600,7 @@ void tGame::recalcPreyDistTableForOnePrey(double preyX[], double preyY[], bool p
         }
     }
 }
-
+ */
 // sums a vector of values
 double tGame::sum(vector<double> values)
 {
@@ -578,19 +794,6 @@ double tGame::predictNextInput(vector<int>A){
 
 void tGame::loadExperiment(char *filename){
     theExperiment.loadExperiment(filename);
-}
-
-int tGame::neuronsConnectedToPreyRetina(tAgent *agent){
-    tAgent *A=new tAgent;
-    int i,j,c=0;
-    A->genome=agent->genome;
-    A->setupPhenotype();
-    for(i=0;i<A->hmmus.size();i++)
-        for(j=0;j<A->hmmus[i]->ins.size();j++)
-            if(A->hmmus[i]->ins[j]<preySensors)
-                c++;
-    delete A;
-    return c;
 }
 
 //** tOctuplet implementation
