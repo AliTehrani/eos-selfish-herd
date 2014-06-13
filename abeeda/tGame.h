@@ -62,14 +62,19 @@ public:
     int decimal(unsigned char s[]);
     tExperiment theExperiment;
     void loadExperiment(char *filename);
-    string executeGame(vector<tAgent*> swarmAgents, FILE *data_file, bool report, bool collision, double startingDist, int killDelay);
+    string executeGame(vector<tAgent*> swarmAgents, FILE *data_file, bool &report, long &numberCollision, double &avgSwarmFitness, int killDelay, int deme);
     tGame();
     ~tGame();
     void applyBoundary(double& positionVal);
+    void initialPlacement(vector<tAgent*> swarmAgents);
+    void printToString(vector<tAgent*> swarmAgents, int& step, ostringstream& sstm);
+    void wallsCheck(double xTemp, double yTemp, double &xPos, double &yPos, double &direction, double &fitness);   
+    void wallsCheck_2(double xTemp, double yTemp, double &xPos, double &yPos, double &direction, double &fitness);
     void senseStates(vector<tAgent*> swarmAgents);
     double calcDistanceSquared(double fromX, double fromY, double toX, double toY);
     double calcAngle(double fromX, double fromY, double fromAngle, double toX, double toY);
-    double bounceBackAngle(double x1, double y1, double theta, double x2, double y2);
+    void bounceBack(double &x1, double &y1, double &theta1, double x2, double y2);
+    void noOverlap(double &xPos, double &yPos, double direction);
     void calcSwarmCenter(double preyX[], double preyY[], bool preyDead[], double& preyCenterX, double& preyCenterY);
     //    void recalcPreyDistTable(double preyX[], double preyY[], bool preyDead[],
     //                             double preyToPreyDists[swarmSize][swarmSize]);

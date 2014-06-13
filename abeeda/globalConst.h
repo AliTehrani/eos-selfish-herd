@@ -24,5 +24,12 @@
 
 #define     randDouble      ((double)rand() / (double)RAND_MAX)
 #define     maxNodes        32
-#define     swarmSize		40
+#define     swarmSize		2
+#define     numberOfDemes       100
+#define reward                  1.0
+#define fitnessInit             0.0
+#define penaltyCollision	(reward*0)
+#define penaltyWall             0.0
+#define penaltyStay             0.0
+#define penaltyTurn             (reward*0)
 #endif

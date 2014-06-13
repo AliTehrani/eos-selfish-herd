@@ -24,286 +24,291 @@
 #define cPI 3.14159265
 
 // simulation-specific constants
-#define visionRange	        60.0 * 60.0
-#define visionAngle    		360.0 / 2.0
-#define agentSensors            24
-#define totalStepsInSimulation  2500
-#define gridX                   400.0
-#define gridY                   400.0
+#define totalStepsInSimulation  10000
+#define gridX                   30.0
+#define gridY                   30.0
 #define gridXAcross             2.0 * gridX
 #define gridYAcross             2.0 * gridY
 #define collisionDist           10.0 * 10.0
-#define boundaryDist            gridX - sqrt(collisionDist)/2.0
-#define boundaryVision		gridX - sqrt(visionRange)
-#define stepsUntilPredation     250
-#define nodesAgents		12
-#define boundaryVision          gridX - sqrt(visionRange)
-#define nodesBoundary           12
-
-#define V                       5
+#define boundaryDist            (gridX - sqrt(collisionDist)/2.0)
+#define boundaryVision		(gridX - sqrt(visionRange))
+#define V                       10
 #define dTheta                  6.0
 #define dTime                   0.1
-#define fitnessInit             0.0
-#define penaltyCollision	0.0
-#define penaltyWall             0.0
-#define penaltyStay             0.0
-#define penaltyTurn             0.0
-#define reward                  10.0
+
+#define nodesAgents		12//states[0-11] other agents
+#define nodesBoundary           12//states[12-23] walls
+#define visionRange	        60.0 * 60.0
+#define visionAngle    		360.0 / 2.0
+#define agentSensors            24
+
 
 // precalculated lookup tables for the game
 double cosLookup[360];
 double sinLookup[360];
 double atan2Lookup[2400][2400];
 
-tGame::tGame()
-{
-  /*    // fill lookup tables
-    for (int i = 0; i < 360; ++i)
-    {
-        cosLookup[i] = cos((double)i * (cPI / 180.0));
-        sinLookup[i] = sin((double)i * (cPI / 180.0));
-    }
-    
-    for (int i = 0; i < 2400; ++i)
-    {
-        for (int j = 0; j < 2400; ++j)
-        {
-            atan2Lookup[i][j] = atan2(i - 1200, j - 1200) * 180.0 / cPI;
-        }
-	}*/
-}
+tGame::tGame() { }
 
 tGame::~tGame() { }
 
 // runs the simulation for the given agent(s)
-string tGame::executeGame(vector<tAgent*> swarmAgents, FILE *data_file, bool report, bool collision, double startingDist, int killDelay)
+string tGame::executeGame(vector<tAgent*> swarmAgents, FILE *data_file, bool &report, long &numberCollision, double &avgSwarmFitness, int killDelay, int deme)
 {
   string reportString = "";
-  //  srand(time(0));
-  
   enum Action {stay=0, left, right, move};
-    Action action;
-    int i, j;
-    int repeat, numberCollisions=0;
-    double xTemp, yTemp;
-    ostringstream sstm;
-    sstm << "timeStep, x, y, direction, fitness\n";
+  Action action;
+  //  int i, j;
+  int numberCollisions=0;
+  double xTemp, yTemp;
+  ostringstream sstm;
+  sstm << gridX << ", " << gridY << ", " << sqrt(collisionDist) << ", " << swarmSize << " ," << totalStepsInSimulation << ", " << nodesAgents << ", "  << sqrt(visionRange) << ", " << visionAngle <<'\n';
+//Initial placement
+  initialPlacement(swarmAgents);
+
+//  Iterating...
+  for (int step=0; step<totalStepsInSimulation; step++){
+    
+    senseStates(swarmAgents);
+    
+//Writing to string
+    printToString(swarmAgents, step, sstm);
+    
+    for (int j=0; j<swarmSize; j++){
+      swarmAgents[j]->updateStates();
+      action = static_cast<Action>((int)(swarmAgents[j]->states[(maxNodes-2)]&1)*2+(int)(swarmAgents[j]->states[maxNodes-1]&1));
+      switch (action){
+      case stay:{
+	swarmAgents[j]->fitness -= penaltyStay;
+	continue;
+      }
+      case left:{
+	swarmAgents[j]->direction = (int)(swarmAgents[j]->direction+dTheta)%360;
+	swarmAgents[j]->fitness -= penaltyTurn;
+	break;
+      }
+      case right:{
+	swarmAgents[j]->direction = (int)(swarmAgents[j]->direction-dTheta+360)%360;
+	swarmAgents[j]->fitness -= penaltyTurn;
+	break;
+      }
+      case move:{
+      }
+      }
+      
+      xTemp = swarmAgents[j]->xPos + V*cos(swarmAgents[j]->direction/180.0*cPI)*dTime;
+      yTemp = swarmAgents[j]->yPos + V*sin(swarmAgents[j]->direction/180.0*cPI)*dTime;
+      
+//Walls
+      wallsCheck(xTemp, yTemp, swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[j]->direction, swarmAgents[j]->fitness);
+    }
+//Collisions
+    for (int m=0; m<swarmSize-1; m++){
+      for (int n=m+1; n<swarmSize; n++){
+	double distance2 = calcDistanceSquared(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
+	if (distance2 <= collisionDist){
+	  numberCollisions++;
+	  swarmAgents[m]->fitness -= penaltyCollision;
+	  swarmAgents[n]->fitness -= penaltyCollision;
+//Bounce back
+
+	  action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-1]&1));
+	  if (action != stay)
+	    bounceBack(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[m]->direction, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
+	  action = static_cast<Action>((int)(swarmAgents[n]->states[maxNodes-1]&1));
+	  if (action != stay)
+	    bounceBack(swarmAgents[n]->xPos, swarmAgents[n]->yPos, swarmAgents[n]->direction, swarmAgents[m]->xPos, swarmAgents[m]->yPos);
+	  
+//No overlap
+/*	    action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-2])*2+(int)(swarmAgents[m]->states[maxNodes-1]));
+	    if (action!=stay)
+	      noOverlap(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[m]->direction);
+	    
+            action = static_cast<Action>((int)(swarmAgents[n]->states[maxNodes-2])*2+(int)(swarmAgents[n]->states[maxNodes-1]));
+            if (action!=stay)
+	      noOverlap(swarmAgents[n]->xPos, swarmAgents[n]->yPos, swarmAgents[n]->direction);
+*/
+	}
+      }
+    }
+  }
+
+  for (int j=0; j<swarmSize; j++){
+    if (swarmAgents[j]->fitness <= 0)
+      swarmAgents[j]->fitness = 5e-6;
+  }
+
+  //if (data_file!=NULL){
+  // output fitness and # of collisions to data_file
+
+  avgSwarmFitness = 0.0;
+  for (int j = 0; j < swarmSize; j++){
+    avgSwarmFitness += swarmAgents[j]->fitness;
+  }
+  avgSwarmFitness /= (double)swarmSize;
+  //fprintf(data_file, "%d,%d,%f,%d\n", swarmAgents[0]->born, deme, avgSwarmFitness, numberCollisions);
+  //}
+  
+  //if (numberCollisions < 10){
+  report = true;
+  //}
+  /*for (int j=0; j<swarmSize; j++){
+    if (swarmAgents[j]->fitness < 3000)
+    report = false;
+    }*/
+  reportString = sstm.str();
+  return reportString;
+}
 
 //Initial placement
-    for (int j=0; j<=swarmSize-1; j++){
-//check if positions overlap
-      int repeat;
-      do{
-	swarmAgents[j]->xPos = rand()%int(gridX-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
-	swarmAgents[j]->yPos = rand()%int(gridY-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
-	repeat=0;
-	for (int m=0; m<=j-1; m++){
-	  if (calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[m]->xPos, swarmAgents[m]->yPos)<=collisionDist){
-	    repeat=1;
-	    break;
-	  }
-	}
-      }while(repeat==1);
-      swarmAgents[j]->direction = (rand()%60)*6;
-      swarmAgents[j]->fitness = fitnessInit;
-      sstm << "0, " << swarmAgents[j]->xPos << ", " <<swarmAgents[j]->yPos << ", " << swarmAgents[j]->direction << ", " << swarmAgents[j]->fitness << '\n';
-    }
-    
-//  Iterating...
-    for (i=1; i<=totalStepsInSimulation-1; i++){
-      senseStates(swarmAgents);
-      for (j=0; j<=swarmSize-1; j++){
-
-	swarmAgents[j]->updateStates();
-	action = static_cast<Action>((int)(swarmAgents[j]->states[maxNodes-2])*2+(int)(swarmAgents[j]->states[maxNodes-1]));
-	switch (action){
-	case stay:
-	  {
-	    swarmAgents[j]->fitness -= penaltyStay;
-	    if (swarmAgents[j]->fitness <= 0)
-	      swarmAgents[j]->fitness = 1.0;
-	    continue;
-	  }
-	case left:
-	  {
-	    swarmAgents[j]->direction = (int)(swarmAgents[j]->direction+dTheta)%360;
-	    break;
-	  }
-	case right:
-	  {
-	    swarmAgents[j]->direction = (int)(swarmAgents[j]->direction-dTheta+360)%360;
-	    break;
-	  }
-	case move:
-	  {
-	    //	    swarmAgents[j]->xPos += V*cos(swarmAgents[j]->direction/180.0*cPI)*dTime;
-	    //	    swarmAgents[j]->yPos += V*sin(swarmAgents[j]->direction/180.0*cPI)*dTime;
-	  }
-	}
-	xTemp = swarmAgents[j]->xPos + V*cos(swarmAgents[j]->direction/180.0*cPI)*dTime;
-	yTemp = swarmAgents[j]->yPos + V*sin(swarmAgents[j]->direction/180.0*cPI)*dTime;
-	//        if (swarmAgents[j]->fitness <= 0)
-	//swarmAgents[j]->fitness = 1.0;
-//Walls: no entrance
-/*	if (xTemp >= boundaryDist)
-	  swarmAgents[j]->xPos = boundaryDist;
-	else if (xTemp <= sqrt(collisionDist)/2.0)
-	  swarmAgents[j]->xPos = sqrt(collisionDist)/2.0;
-	else if (yTemp >= boundaryDist)
-	  swarmAgents[j]->yPos = boundaryDist;
-	else if (yTemp <= sqrt(collisionDist)/2.0)
-	  swarmAgents[j]->yPos = sqrt(collisionDist)/2.0;
-        else{
-	  swarmAgents[j]->xPos = xTemp;
-	  swarmAgents[j]->yPos = yTemp;
-	  swarmAgents[j]->fitness += reward;
-	  }*/
-	   
-//Walls: bounce back
-	if (xTemp >= boundaryDist){
-	  swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
-          swarmAgents[j]->xPos = 2*boundaryDist - swarmAgents[j]->xPos;
-	  swarmAgents[j]->fitness -= penaltyWall;
-	  if (swarmAgents[j]->fitness <= 0)
-	    swarmAgents[j]->fitness = 1.0;
-          swarmAgents[j]->xPos = 2*boundaryDist - swarmAgents[j]->xPos;
-	}
-        else if (xTemp <= sqrt(collisionDist)/2.0){
-          swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
-          swarmAgents[j]->xPos = sqrt(collisionDist) - swarmAgents[j]->xPos;
-          swarmAgents[j]->fitness -= penaltyWall;
-          if (swarmAgents[j]->fitness <= 0)
-            swarmAgents[j]->fitness = 1.0;
-	}
-        else if (yTemp >= boundaryDist){
-	  swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
-          swarmAgents[j]->yPos = 2*boundaryDist - swarmAgents[j]->yPos;
-          swarmAgents[j]->fitness -= penaltyWall;
-          if (swarmAgents[j]->fitness <= 0)
-            swarmAgents[j]->fitness = 1.0;
-          swarmAgents[j]->yPos = 2*boundaryDist - swarmAgents[j]->yPos;
-	}
-        else if (yTemp <= sqrt(collisionDist)/2.0){
-	  swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
-          swarmAgents[j]->yPos = sqrt(collisionDist) - swarmAgents[j]->yPos;
-          swarmAgents[j]->fitness -= penaltyWall;
-          if (swarmAgents[j]->fitness <= 0)
-            swarmAgents[j]->fitness = 1.0;
-          swarmAgents[j]->yPos = sqrt(collisionDist) - swarmAgents[j]->yPos;
-	}
-        else{
-          swarmAgents[j]->xPos = xTemp;
-          swarmAgents[j]->yPos = yTemp;
-          swarmAgents[j]->fitness += reward;
-	}
-	//        if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
-	//	  swarmAgents[j]->xPos = xTemp;
-	//	  swarmAgents[j]->yPos = yTemp;
-	//	  swarmAgents[j]->fitness += reward;
-	//        }
-	//        else{
-	//  swarmAgents[j]->fitness -= penaltyWall;
-        //  if (swarmAgents[j]->fitness <= 0)
-	//    swarmAgents[j]->fitness = 1.0;
-	//  if ((xTemp >= boundaryDist)||(xTemp <= sqrt(collisionDist)/2.0)){
-	//    swarmAgents[j]->direction = (int)(180-swarmAgents[j]->direction+360) % 360;
-	//  }
-	//  else{//if ((swarmAgents[j]->yPos[i] >= gridY)||(swarmAgents[j]->yPos <= 0)){
-	//    swarmAgents[j]->direction = (int)(-swarmAgents[j]->direction+360) % 360;
-	//  }
-	//}
-
+void tGame::initialPlacement(vector<tAgent*> swarmAgents){
+  for (int j=0; j<swarmSize; j++){
+    //check if positions overlap
+    bool repeat=false;
+    do{
+      swarmAgents[j]->xPos = rand()%int(gridX-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
+      swarmAgents[j]->yPos = rand()%int(gridY-sqrt(collisionDist)-1)+int(sqrt(collisionDist)/2.0)+1;
+      repeat=false;
+      for (int m=0; (m<j)&&(repeat==false); m++){
+	if (calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[m]->xPos, swarmAgents[m]->yPos)<=collisionDist){
+	  repeat=true;
       }
-//Collisions
-      for (int m=0; m<=swarmSize-2; m++){
-	for (int n=m+1; n<=swarmSize-1; n++){
-	  double distance2 = calcDistanceSquared(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
-	  if (distance2 <= collisionDist){
-            numberCollisions++;
-	    swarmAgents[m]->fitness -= penaltyCollision;
-	    swarmAgents[n]->fitness -= penaltyCollision;
-            if (swarmAgents[m]->fitness <= 0)
-              swarmAgents[m]->fitness = 1.0;
-	    if (swarmAgents[n]->fitness <= 0)
-	      swarmAgents[n]->fitness = 1.0;
-
-//No overlap
-/*
-	    xTemp = swarmAgents[m]->xPos - (V*dTime)*cos(swarmAgents[m]->direction/180.0*cPI);
-	    yTemp = swarmAgents[m]->yPos - (V*dTime)*sin(swarmAgents[m]->direction/180.0*cPI);
-
-	    action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-2])*2+(int)(swarmAgents[m]->states[maxNodes-1]));
-	    if (action!=stay){
-	      if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
-		swarmAgents[m]->xPos -= V*cos(swarmAgents[m]->direction/180.0*cPI)*dTime;
-		swarmAgents[m]->yPos -= V*sin(swarmAgents[m]->direction/180.0*cPI)*dTime;
-	      }
-	    }
-
-            xTemp = swarmAgents[n]->xPos - (V*dTime)*cos(swarmAgents[n]->direction/180.0*cPI);
-            yTemp = swarmAgents[n]->yPos - (V*dTime)*sin(swarmAgents[n]->direction/180.0*cPI);
-
-            action = static_cast<Action>((int)(swarmAgents[n]->states[maxNodes-2])*2+(int)(swarmAgents[n]->states[maxNodes-1]));
-	    if (action!=stay){
-              if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
-                swarmAgents[n]->xPos = xTemp;//V*cos(swarmAgents[n]->direction/180.0*cPI)*dTime;
-                swarmAgents[n]->yPos = yTemp;//V*sin(swarmAgents[n]->direction/180.0*cPI)*dTime;
-              }
-	    }
-*/
-//BounceBack
-
-            swarmAgents[m]->direction = bounceBackAngle(swarmAgents[m]->xPos, swarmAgents[m]->yPos, swarmAgents[m]->direction, swarmAgents[n]->xPos, swarmAgents[n]->yPos);
-	    swarmAgents[n]->direction = bounceBackAngle(swarmAgents[n]->xPos, swarmAgents[n]->yPos, swarmAgents[n]->direction, swarmAgents[m]->xPos, swarmAgents[m]->yPos);
-	    action = static_cast<Action>((int)(swarmAgents[m]->states[maxNodes-2])*2+(int)(swarmAgents[m]->states[maxNodes-1]));
-	    //	    if (action!=stay){
-	    //              swarmAgents[m]->xPos += (V*dTime-sqrt(distance2))*cos(swarmAgents[m]->direction/180.0*cPI);
-	    //              swarmAgents[m]->yPos += (V*dTime-sqrt(distance2))*sin(swarmAgents[m]->direction/180.0*cPI);
-	    //            }
-	  }
-	}
       }
+    }while(repeat==true);
+    swarmAgents[j]->direction = (rand()%360);
+    swarmAgents[j]->fitness = fitnessInit;
+    swarmAgents[j]->setupPhenotype();
+  }
+}
 
 //Writing to string
-      for (j=0; j<=swarmSize-1; j++){
-	sstm << i << ", " << swarmAgents[j]->xPos << ", " << swarmAgents[j]->yPos << ", " << swarmAgents[j]->direction << ", " << swarmAgents[j]->fitness << '\n';
-      }
-
+void tGame::printToString(vector<tAgent*> swarmAgents, int& step, ostringstream& sstm){
+  for (int j=0; j<swarmSize; j++){
+    sstm << step << ", " << swarmAgents[j]->xPos << ", " << swarmAgents[j]->yPos << ", " << swarmAgents[j]->direction << ", " << swarmAgents[j]->fitness;
+    for (int l=0; l<agentSensors; l++){
+      sstm << ", " << (swarmAgents[j]->states[l]&1);
     }
-
-    if (data_file!=NULL){
-      // output fitness and # of collisions to data_file
-
-      double avgSwarmFitness = 0.0;
-      for (int j = 0; j <= swarmSize-1; j++)
-	{
-	  avgSwarmFitness += swarmAgents[j]->fitness;
-	}
-      avgSwarmFitness /= (double)swarmSize;
-      
-      fprintf(data_file, "%d,%f,%d\n", swarmAgents[0]->born, avgSwarmFitness, numberCollisions);
-    }
-
-    reportString = sstm.str();
-    return reportString;
+    sstm << '\n';
+  }
 }
+
+//bounce back for walls
+void tGame::wallsCheck(double xTemp, double yTemp, double &xPos, double &yPos, double &direction, double &fitness){
+  if (xTemp > boundaryDist){
+    direction = (int)(180-direction+360) % 360;
+    xPos = 2*boundaryDist - xTemp;
+    fitness -= penaltyWall;
+  }
+  else if (xTemp < sqrt(collisionDist)/2.0){
+    direction = (int)(180-direction+360) % 360;
+    xPos = sqrt(collisionDist) - xTemp;
+    fitness -= penaltyWall;
+  }
+  if (yTemp > boundaryDist){
+    direction = (int)(-direction+360) % 360;
+    yPos = (2.0*boundaryDist) - yTemp;
+    fitness -= penaltyWall;
+  }
+  else if (yTemp < sqrt(collisionDist)/2.0){
+    direction = (int)(-direction+360) % 360;
+    yPos = sqrt(collisionDist) - yTemp;
+    fitness -= penaltyWall;
+  }
+  else if ((xTemp>=sqrt(collisionDist)/2.0)&&(xTemp<=boundaryDist)){
+    xPos = xTemp;
+    yPos = yTemp;
+    fitness += reward;
+  }
+}
+
+//no overlap with walls
+void tGame::wallsCheck_2(double xTemp, double yTemp, double &xPos, double &yPos, double &direction, double &fitness){
+  if (xTemp >= boundaryDist)
+    xPos = boundaryDist;
+  else if (xTemp <= sqrt(collisionDist)/2.0)
+    xPos = sqrt(collisionDist)/2.0;
+  if (yTemp >= boundaryDist)
+    yPos = boundaryDist;
+  else if (yTemp <= sqrt(collisionDist)/2.0)
+    yPos = sqrt(collisionDist)/2.0;
+  else if ((xTemp>=sqrt(collisionDist)/2.0)&&(xTemp<=boundaryDist)){
+    xPos = xTemp;
+    yPos = yTemp;
+    fitness += reward;
+  }
+}
+
+//Bounce back
+void tGame::bounceBack(double &x1, double &y1, double &theta1, double x2, double y2){
+  double gamma = atan2(y1-y2, x1-x2);
+  double bb = 2*gamma - theta1/180.0*cPI + cPI;
+  if (cos(theta1/180.0*cPI-gamma)<0){
+    double xTemp = x1 - V*dTime*cos(theta1/180.0*cPI);
+    double yTemp = y1 - V*dTime*sin(theta1/180.0*cPI);
+    theta1 = int(bb*180.0/cPI + 360*2) % 360;
+    //Walls: bounce back
+    if (xTemp > boundaryDist){
+      theta1 = (int)(180-theta1+360) % 360;
+      x1 = 2*boundaryDist - xTemp;
+    }
+    else if (xTemp < sqrt(collisionDist)/2.0){
+      theta1 = (int)(180-theta1+360) % 360;
+      x1 = sqrt(collisionDist) - xTemp;
+    }
+    if (yTemp > boundaryDist){
+      theta1 = (int)(-theta1+360) % 360;
+      y1 = (2.0*boundaryDist) - yTemp;
+    }
+    else if (yTemp < sqrt(collisionDist)/2.0){
+      theta1 = (int)(-theta1+360) % 360;
+      y1 = sqrt(collisionDist) - yTemp;
+    }
+    else if ((xTemp>=sqrt(collisionDist)/2.0)&&(xTemp<=boundaryDist)){
+      x1 = xTemp;
+      y1 = yTemp;
+    }
+  }
+}
+
+//No overlap collision
+void tGame::noOverlap(double &xPos, double &yPos, double direction){
+  double xTemp = xPos - (V*dTime)*cos(direction/180.0*cPI);
+  double yTemp = yPos - (V*dTime)*sin(direction/180.0*cPI);
+
+  if ((xTemp <= boundaryDist)&&(xTemp >= sqrt(collisionDist)/2.0)&&(yTemp <= boundaryDist)&&(yTemp >= sqrt(collisionDist)/2.0)){
+    xPos -= xTemp;
+    yPos -= yTemp;
+  }
+}
+
 void tGame::senseStates(vector<tAgent*> swarmAgents){
   //Filling states vector
-  for (int j=0; j<=swarmSize-1; j++){
+  for (int j=0; j<swarmSize; j++){
+    if ((swarmAgents[j]->direction<0)||(swarmAgents[j]->direction>360))
+      cout<< swarmAgents[j]->direction << '\n';
     //zeroing states vector
     for (int l=0; l<nodesBoundary+nodesAgents; l++){
       swarmAgents[j]->states[l]=0;
     }
     //Sensing other agents
-    for (int k=0; k<=swarmSize-1; k++){
+    for (int k=0; k<swarmSize; k++){
       if (j==k)
 	continue;
-      if (calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[k]->xPos, swarmAgents[k]->yPos)<visionRange){
+      double distance = calcDistanceSquared(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[k]->xPos, swarmAgents[k]->yPos);
+      if (distance < visionRange){
 	int relativeAngle=calcAngle(swarmAgents[j]->xPos, swarmAgents[j]->yPos, swarmAgents[j]->direction, swarmAgents[k]->xPos, swarmAgents[k]->yPos);
-	int initAngle=(relativeAngle+90)%360;
-	int sensePos=(initAngle)/(visionAngle/nodesAgents);
-	if (sensePos<nodesAgents)
-	  swarmAgents[j]->states[sensePos]=1;	
+
+	double blockedSightAngle = asin(sqrt(collisionDist/(4.0*distance)))*180.0/cPI;
+	int initAngle = int(relativeAngle - blockedSightAngle + 90)%360;
+	int sensePosInit = (initAngle)/(visionAngle/nodesAgents);
+	int sensePosFin = (initAngle + 2.0*blockedSightAngle)/(visionAngle/nodesAgents);
+	if (sensePosInit < 0)
+	  sensePosInit = 0;
+	if (sensePosFin >= nodesAgents)
+	  sensePosFin = nodesAgents - 1;
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l] = 1;
+	}
       }
     }
 
@@ -316,122 +321,117 @@ void tGame::senseStates(vector<tAgent*> swarmAgents){
     //Rightside wall
     if (swarmAgents[j]->xPos>=boundaryVision){
       boundaryAngle=acos((gridX-swarmAgents[j]->xPos)/sqrt(visionRange))*180.0/cPI;
-
-      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
-      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
+      
       if ((swarmAgents[j]->direction<=boundaryAngle+90)&&(swarmAgents[j]->direction>=90-boundaryAngle)){
 	sensePosFin -= (int)((visionAngleFin-boundaryAngle)/(visionAngle/nodesBoundary));
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
       else if ((swarmAgents[j]->direction>=360-boundaryAngle-90)&&(swarmAgents[j]->direction<=360-90+boundaryAngle)){
 	sensePosInit += (int)((360-boundaryAngle-visionAngleInit)/(visionAngle/nodesBoundary));
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	    swarmAgents[j]->states[l]=1;
+	}
       }
-      else {
+      else if ((swarmAgents[j]->direction<90-boundaryAngle)||(swarmAgents[j]->direction>360-90+boundaryAngle)){
 	sensePosInit += (int)((360-boundaryAngle-visionAngleInit)/(visionAngle/nodesBoundary));
 	sensePosFin -= (int)((visionAngleFin-boundaryAngle)/(visionAngle/nodesBoundary));
+	  for (int l=sensePosInit; l<=sensePosFin; l++){
+	    swarmAgents[j]->states[l]=1;
+	  }
       }
-      
-      for (int l=sensePosInit; l<=sensePosFin; l++){
-	swarmAgents[j]->states[l]=1;
-      }
-      //}
     }
     //Upside wall
     sensePosInit=nodesAgents;
     sensePosFin= nodesAgents + nodesBoundary - 1;
     if (swarmAgents[j]->yPos>=boundaryVision){
-      boundaryAngle=acos((gridX-swarmAgents[j]->yPos)/sqrt(visionRange))*180.0/cPI;
-      //      cout<<"boundary angle: "<<boundaryAngle<<'\n';
-
-      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
-      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
+      boundaryAngle=acos((gridY-swarmAgents[j]->yPos)/sqrt(visionRange))*180.0/cPI;
+      
       if ((swarmAgents[j]->direction>=90-boundaryAngle+90)&&(swarmAgents[j]->direction<=90+boundaryAngle+90)){
 	sensePosFin -= (int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary));
-	//	cout<<1<<'\t'<<(int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary))<<'\t'<<sensePosFin<<'\n';
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
       else if ((swarmAgents[j]->direction<=boundaryAngle)||(swarmAgents[j]->direction>=360-boundaryAngle)){
 	sensePosInit += (int)((180-visionAngleFin+90-boundaryAngle)/(visionAngle/nodesBoundary));
-	//	cout<<2<<'\t'<<(int)(90-boundaryAngle-(swarmAgents[j]->direction-90))<<'\t'<<sensePosInit<<'\n';
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
-      else {
+      else if ((swarmAgents[j]->direction>boundaryAngle)&&(swarmAgents[j]->direction<180-boundaryAngle)){
 	sensePosInit += (int)((180-visionAngleFin+90-boundaryAngle)/(visionAngle/nodesBoundary));
 	sensePosFin -= (int)((visionAngleFin-90-boundaryAngle)/(visionAngle/nodesBoundary));
-	//	cout<<3<<'\t'<<sensePosInit<<'\t'<<sensePosFin<<'\n';
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
-
-      for (int l=sensePosInit; l<=sensePosFin; l++){
-	swarmAgents[j]->states[l]=1;
-      }
-      //}
     }
-    
-
     //Leftside wall
     sensePosInit=nodesAgents;
     sensePosFin= nodesAgents + nodesBoundary - 1;
     if (swarmAgents[j]->xPos<sqrt(visionRange)){
       boundaryAngle=acos((swarmAgents[j]->xPos)/sqrt(visionRange))*180.0/cPI;
 
-      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
-      if ((swarmAgents[j]->direction<=180+boundaryAngle+90)&&(swarmAgents[j]->direction>=180-boundaryAngle+90)){
-	sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
+      if ((swarmAgents[j]->direction>=-boundaryAngle+90)&&(swarmAgents[j]->direction<=360+boundaryAngle-90)){
+	if ((swarmAgents[j]->direction<=180+boundaryAngle+90)&&(swarmAgents[j]->direction>=180-boundaryAngle+90)){
+	  sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
+	  for (int l=sensePosInit; l<=sensePosFin; l++){
+	    swarmAgents[j]->states[l]=1;
+	  }
+	}
+	else if ((swarmAgents[j]->direction>=180-boundaryAngle-90)&&(swarmAgents[j]->direction<=180+boundaryAngle-90)){
+	  sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
+	  for (int l=sensePosInit; l<=sensePosFin; l++){
+	    swarmAgents[j]->states[l]=1;
+	  }
+	}
+	else if ((swarmAgents[j]->direction>180+boundaryAngle-90)&&(swarmAgents[j]->direction<180-boundaryAngle+90)){
+	  sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
+	  sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
+	  for (int l=sensePosInit; l<=sensePosFin; l++){
+	    swarmAgents[j]->states[l]=1;
+	  }
+	}
       }
-      else if ((swarmAgents[j]->direction>=180-boundaryAngle-90)&&(swarmAgents[j]->direction<=180+boundaryAngle-90)){
-	sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
-      }
-      else {
-	sensePosInit += (int)((180-boundaryAngle-(swarmAgents[j]->direction-90))/(visionAngle/nodesBoundary));
-	sensePosFin -= (int)((swarmAgents[j]->direction+90-boundaryAngle-180)/(visionAngle/nodesBoundary));
-      }
-      
-      for (int l=sensePosInit; l<=sensePosFin; l++){
-	swarmAgents[j]->states[l]=1;
-      }
-      //}
     }
+
     //Lower wall
     sensePosInit=nodesAgents;
     sensePosFin= nodesAgents + nodesBoundary - 1;
     if (swarmAgents[j]->yPos<=sqrt(visionRange)){
       boundaryAngle=acos((swarmAgents[j]->yPos)/sqrt(visionRange))*180.0/cPI;
-      //      cout<<"boundary angle: "<<boundaryAngle<<'\n';
-
-      //if ((swarmAgents[j].direction<=boundaryAngle+90)||(swarmAgents[j].direction>=360-boundaryAngle-90)){
-      //      cout<<j<<'\t'<<visionAngleInit<<'\t'<<boundaryAngle<<'\t'<<(-visionAngleInit-boundaryAngle)<<'\n';
       if ((swarmAgents[j]->direction>=90-boundaryAngle+90)&&(swarmAgents[j]->direction<=90+boundaryAngle+90)){
 	sensePosInit += (int)((270-boundaryAngle-swarmAgents[j]->direction+90)/(visionAngle/nodesBoundary));
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
       else if ((swarmAgents[j]->direction<=boundaryAngle)||(swarmAgents[j]->direction>=360-boundaryAngle)){
 	sensePosFin -= (int)((180-270-boundaryAngle+visionAngleInit)/(visionAngle/nodesBoundary));
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
-      else {
+      else if ((swarmAgents[j]->direction>270+boundaryAngle-90)&&(swarmAgents[j]->direction<270-boundaryAngle+90)){
 	sensePosInit += (int)((270-boundaryAngle-swarmAgents[j]->direction+90)/(visionAngle/nodesBoundary));
 	sensePosFin -= (int)((180-270-boundaryAngle+visionAngleInit)/(visionAngle/nodesBoundary));
+	for (int l=sensePosInit; l<=sensePosFin; l++){
+	  swarmAgents[j]->states[l]=1;
+	}
       }
-      
-      for (int l=sensePosInit; l<=sensePosFin; l++){
-	swarmAgents[j]->states[l]=1;
-      }
-      //}
     }
   }
 }
-
-//Bounce back angle
-double tGame::bounceBackAngle(double x1, double y1, double theta, double x2, double y2){
-  double gamma = atan2(y2-y1, x2-x1)*180.0/cPI;
-  double bb = int(2*gamma - theta+540)%360;
-  return(bb);
-}
-
+  
 //Function for decimal transform
 int tGame::decimal(unsigned char s[]){
 
   int k = 0;
-  for (int j=0; j<=1; j++){
-    //cout<<gen[j];
-    k += int(s[j]*pow(2, j));
+  for (int j=0; j<2; j++){
+    k += int(s[j]&1)*pow(2, j);
   }
-  //cout<<"   "<<k<<endl;
   return(k);
 }
 

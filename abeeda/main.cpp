@@ -66,7 +66,7 @@ using namespace std;
 
 //double  replacementRate             = 0.1;
 double  perSiteMutationRate         = 0.005;
-int     populationSize              = swarmSize;
+int     populationSize              = swarmSize*numberOfDemes;
 int     totalGenerations            = 100000;
 tGame   *game                       = NULL;
 
@@ -84,28 +84,29 @@ int     killDelay                   = 10;
 
 int main(int argc, char *argv[])
 {
-	vector<tAgent*> swarmAgents, SANextGen;
-	tAgent *swarmAgent = NULL;
-	double swarmMaxFitness = 0.0;
-    string LODFileName = "", swarmGenomeFileName = "", inputGenomeFileName = "";
-    string swarmDotFileName = "", logicTableFileName = "";
-    int displayDirectoryArgvIndex = 0;
+  vector<tAgent*> swarmAgents, SANextGen;
+  tAgent *swarmAgent = NULL;
+  double swarmMaxFitness = 0.0;
+  string LODFileName = "", swarmGenomeFileName = "", inputGenomeFileName = "";
+  string swarmDotFileName = "", logicTableFileName = "";
+  int displayDirectoryArgvIndex = 0;
+  
+  ofstream fitnessEvaluation("fitness_evaluation.txt");
+  fitnessEvaluation << "Initial fitness: " << fitnessInit << "\nMoving reward: " << reward << "\nPenalty of collision with other agents: " << penaltyCollision << "\nPenalty of collision with walls: " << penaltyWall << "\nPenalty of stay: " << penaltyStay << "\nPenalty of turning: " << penaltyTurn << '\n';
+  fitnessEvaluation.close();
 
-    ostringstream fname[totalGenerations+3];
-    ofstream *trajectory = new ofstream[totalGenerations+3];
- 
-    // initial object setup
-	game = new tGame;
-	swarmAgent = new tAgent;
-    
+  // initial object setup
+  game = new tGame;
+  swarmAgent = new tAgent;
+  
     // time-based seed by default. can change with command-line parameter.
-    srand((unsigned int)time(NULL));
-    
-    for (int i = 1; i < argc; ++i)
+  srand((unsigned int)time(NULL));
+  
+  for (int i = 1; i < argc; ++i)
     {
-        // -d [in file name]: display prey genome in simulation
+      // -d [in file name]: display prey genome in simulation
         if (strcmp(argv[i], "-d") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             swarmAgent->loadAgent(argv[i]);
             
@@ -114,16 +115,16 @@ int main(int argc, char *argv[])
         
         // -dd [directory]: display all genome files in a given directory
         if (strcmp(argv[i], "-dd") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             displayDirectoryArgvIndex = i;
             
             display_directory = true;
-        }
+	  }
         
         // -e [out file name] [out file name]: evolve
         else if (strcmp(argv[i], "-e") == 0 && (i + 2) < argc)
-        {
+	  {
             ++i;
             stringstream lodfn;
             lodfn << argv[i];
@@ -133,74 +134,74 @@ int main(int argc, char *argv[])
             stringstream sgfn;
             sgfn << argv[i];
             swarmGenomeFileName = sgfn.str();
-        }
+	  }
         
         // -s [int]: set seed
         else if (strcmp(argv[i], "-s") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             srand(atoi(argv[i]));
-        }
+	  }
         
         // -g [int]: set generations
         else if (strcmp(argv[i], "-g") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             
             // add 2 generations because we look at ancestor->ancestor as best agent at end of sim
             totalGenerations = atoi(argv[i]) + 2;
             
             if (totalGenerations < 3)
-            {
+	      {
                 cerr << "minimum number of generations permitted is 3." << endl;
                 exit(0);
             }
-        }
+	  }
         
         // -t [int]: track best brains
         else if (strcmp(argv[i], "-t") == 0 && (i + 1) < argc)
-        {
+	  {
             track_best_brains = true;
             ++i;
             track_best_brains_frequency = atoi(argv[i]);
             
             if (track_best_brains_frequency < 1)
-            {
+	      {
                 cerr << "minimum brain tracking frequency is 1." << endl;
                 exit(0);
-            }
-        }
+	      }
+	  }
         
         // -v [int]: make video of best brains at an interval
         else if (strcmp(argv[i], "-v") == 0 && (i + 1) < argc)
-        {
+	  {
             make_interval_video = true;
             ++i;
             make_video_frequency = atoi(argv[i]);
             
             if (make_video_frequency < 1)
-            {
+	      {
                 cerr << "minimum video creation frequency is 1." << endl;
                 exit(0);
-            }
-        }
+	      }
+	  }
         
         // -lt [in file name] [out file name]: create logic table for given genome
         else if (strcmp(argv[i], "-lt") == 0 && (i + 2) < argc)
         {
-            ++i;
-            swarmAgent->loadAgent(argv[i]);
-            swarmAgent->setupPhenotype();
-            ++i;
-            stringstream ltfn;
-            ltfn << argv[i];
+	  ++i;
+	  swarmAgent->loadAgent(argv[i]);
+	  swarmAgent->setupPhenotype();
+	  ++i;
+	  stringstream ltfn;
+	  ltfn << argv[i];
             logicTableFileName = ltfn.str();
             make_logic_table = true;
         }
         
         // -df [in file name] [out file name]: create dot image file for given swarm genome
         else if (strcmp(argv[i], "-df") == 0 && (i + 2) < argc)
-        {
+	  {
             ++i;
             swarmAgent->loadAgent(argv[i]);
             swarmAgent->setupPhenotype();
@@ -209,340 +210,387 @@ int main(int argc, char *argv[])
             dfn << argv[i];
             swarmDotFileName = dfn.str();
             make_dot = true;
-        }
+	  }
         
         // -sd [int]: set swarm starting distance (default: 30)
         else if (strcmp(argv[i], "-sd") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             startingDist = atof(argv[i]);
             
             // simulation works in distance squared
             startingDist *= startingDist;
-        }
+	  }
         
         // -kd [int]: set predator kill attempt delay (default: 10)
         else if (strcmp(argv[i], "-kd") == 0 && (i + 1) < argc)
-        {
+	  {
             ++i;
             
             killDelay = atoi(argv[i]);
-        }
+	  }
         
         // -c [int]: set whether collision detection is active (default: off)
         else if (strcmp(argv[i], "-c") == 0)
-        {
+	  {
             ++i;
             
             collision = true;
-        }
+	  }
     }
-    
-    // initial population setup
-    swarmAgents.resize(populationSize);
-    
-    if (display_only || display_directory || make_interval_video)
-    {
-        // start monitor first, then abeeda
-        setupBroadcast();
-    }
-    
-    if (display_only)
-    {
-        // create clone swarm from that single brain
-        vector<tAgent*> cloneSwarm;
-        
-        for (int j = 0; j < swarmSize; ++j)
-        {
-            tAgent *cloneAgent = new tAgent;
-            cloneAgent->inherit(swarmAgent, 0.0, 0);
-            cloneSwarm.push_back(cloneAgent);
-        }
-        
-        string bestString = findBestRun(cloneSwarm);
-        bestString.append("X");
-        doBroadcast(bestString);
-        exit(0);
-    }
-    
-    if (display_directory)
-    {
-        DIR *dir;
-        struct dirent *ent;
-        dir = opendir(argv[displayDirectoryArgvIndex]);
-        
-        // map: run # -> [swarm file name]
-        map< int, vector<string> > fileNameMap;
-        
-        if (dir != NULL)
-        {
-            cout << "reading in files" << endl;
-            
-            // read all of the files in the directory
-            while ((ent = readdir(dir)) != NULL)
-            {
-                string dirFile = string(ent->d_name);
-                
-                if (dirFile.find(".genome") != string::npos)
-                {
-                    // find the first character in the file name that is a digit
-                    int i = 0;
-                    
-                    for ( ; i < dirFile.length(); ++i)
-                    {
-                        if (isdigit(dirFile[i]))
-                        {
-                            break;
-                        }
-                    }
-                    
-                    // get the run number from the file name
-                    int runNumber = atoi(dirFile.substr(i).c_str());
-                    
-                    if (fileNameMap[runNumber].size() == 0)
-                    {
-                        fileNameMap[runNumber].resize(1);
-                    }
-                    
-                    // map the file name into the appropriate location
-                    if (dirFile.find("swarm") != string::npos)
-                    {
-                        fileNameMap[runNumber][0] = argv[displayDirectoryArgvIndex] + dirFile;
-                    }
-                }
-            }
-            
-            closedir(dir);
-        }
-        else
-        {
-            cerr << "invalid directory: " << argv[displayDirectoryArgvIndex] << endl;
-            exit(0);
-        }
-        
-        // display every swarm file
-        for (map< int, vector<string> >::iterator it = fileNameMap.begin(), end = fileNameMap.end(); it != end; )
-        {
-            if (it->second[0] != "")
-            {
-                cout << "building video for run " << it->first << endl;
-                
-                swarmAgent->loadAgent((char *)it->second[0].c_str());
-                
-                // build clone swarm from the swarm agent brain
-                vector<tAgent*> cloneSwarm;
-                
-                for (int j = 0; j < swarmSize; ++j)
-                {
-                    tAgent *cloneAgent = new tAgent;
-                    cloneAgent->inherit(swarmAgent, 0.0, 0);
-                    cloneSwarm.push_back(cloneAgent);
-                }
-                
-                string bestString = findBestRun(cloneSwarm);
-                
-                cout << "displaying video for run " << it->first << endl;
-                
-                if ( (++it) == end )
-                {
-                    bestString.append("X");
-                }
-                
-                doBroadcast(bestString);
-            }
-            else
-            {
-                cerr << "unmatched file: " << it->second[0] << endl;
-            }
-        }
-        
-        exit(0);
-    }
-    
-    if (make_logic_table)
-    {
-        swarmAgent->saveLogicTable(logicTableFileName.c_str());
-        exit(0);
-    }
-    
-    if (make_dot)
-    {
-        swarmAgent->saveToDot(swarmDotFileName.c_str());
-        exit(0);
-    }
-    
-    // seed the agents
-    delete swarmAgent;
-    swarmAgent = new tAgent;
-    swarmAgent->setupRandomAgent(5000);
-    //swarmAgent->loadAgent((char *)"startSwarm.genome");
-    
-    // make mutated copies of the start genome to fill up the initial population
-	for(int i = 0; i < populationSize; ++i)
-    {
-		swarmAgents[i] = new tAgent;
-		swarmAgents[i]->inherit(swarmAgent, 0.01, 1);
-    }
-    
-	SANextGen.resize(populationSize);
-    
-	swarmAgent->nrPointingAtMe--;
-    
-	cout << "setup complete" << endl;
-    cout << "starting evolution" << endl;
-    
-    FILE *LOD = fopen(LODFileName.c_str(), "w");
-    
-    fprintf(LOD, "generation,fitness,num_collisions\n");
-    fflush(LOD);
-    
-    // main loop
-	for (int update = 2; update <= totalGenerations; ++update)
-    {
-        // reset fitnesses
-		for (int i = 0; i < populationSize; ++i)
-        {
-			swarmAgents[i]->fitness = 0.0;
-			//swarmAgents[i]->fitnesses.clear();
-		}
-        
-        // determine fitness of population
-		swarmMaxFitness = 0.0;
-		double swarmMinFitness = 1000000;//swarmAgents[1]->fitness;
-        double swarmAvgFitness = 0.0;
-        
-        // evaluate entire swarm population
-        if (update % 10 == 0){
-	  fflush(LOD);
-	  fname[update] << "data/trac_" << update << ".csv";
-	  trajectory[update].open(fname[update].str().c_str());
-          trajectory[update] << game -> executeGame(swarmAgents, LOD, true, collision, startingDist, killDelay);
-	}
-	else{
-	  game -> executeGame(swarmAgents, LOD, true, collision, startingDist, killDelay);
-	}
   
-        // compute fitness statistics for swarm
-        for (int i = 0; i < swarmSize; ++i)
-        {
-            swarmAvgFitness += swarmAgents[i]->fitness;
-
-	    if (swarmAgents[i]->fitness < swarmMinFitness){
-	      swarmMinFitness = swarmAgents[i]->fitness;
+  // initial population setup
+  swarmAgents.resize(populationSize);
+  
+  if (display_only || display_directory || make_interval_video)
+    {
+      // start monitor first, then abeeda
+      setupBroadcast();
+    }
+  
+  if (display_only)
+    {
+      // create clone swarm from that single brain
+      vector<tAgent*> cloneSwarm;
+      
+      for (int j = 0; j < populationSize; ++j)
+	{
+	  tAgent *cloneAgent = new tAgent;
+	  cloneAgent->inherit(swarmAgent, 0.0, 0);
+	  cloneSwarm.push_back(cloneAgent);
+	}
+      
+      string bestString = findBestRun(cloneSwarm);
+      bestString.append("X");
+      doBroadcast(bestString);
+      exit(0);
+    }
+    
+  if (display_directory)
+    {
+      DIR *dir;
+      struct dirent *ent;
+      dir = opendir(argv[displayDirectoryArgvIndex]);
+      
+      // map: run # -> [swarm file name]
+      map< int, vector<string> > fileNameMap;
+      
+      if (dir != NULL)
+	{
+	  cout << "reading in files" << endl;
+	  
+	  // read all of the files in the directory
+	  while ((ent = readdir(dir)) != NULL)
+	    {
+	      string dirFile = string(ent->d_name);
+              
+	      if (dirFile.find(".genome") != string::npos)
+		{
+		  // find the first character in the file name that is a digit
+		  int i = 0;
+                    
+		  for ( ; i < dirFile.length(); ++i)
+		    {
+		      if (isdigit(dirFile[i]))
+			{
+			  break;
+			}
+                    }
+                    
+		  // get the run number from the file name
+		  int runNumber = atoi(dirFile.substr(i).c_str());
+                    
+		  if (fileNameMap[runNumber].size() == 0)
+		    {
+		      fileNameMap[runNumber].resize(1);
+		    }
+                    
+		  // map the file name into the appropriate location
+		  if (dirFile.find("swarm") != string::npos)
+		    {
+		      fileNameMap[runNumber][0] = argv[displayDirectoryArgvIndex] + dirFile;
+		    }
+                }
 	    }
             
-            if (swarmAgents[i]->fitness > swarmMaxFitness)
-            {
-                swarmMaxFitness = swarmAgents[i]->fitness;
-            }
+	  closedir(dir);
+	}
+      else
+	{
+	  cerr << "invalid directory: " << argv[displayDirectoryArgvIndex] << endl;
+	  exit(0);
         }
         
-        swarmAvgFitness /= (double)populationSize;
-		
-	cout << "generation " << update << ": swarm [" << (int)swarmAvgFitness << " : " << (int)swarmMaxFitness << " : " << swarmMinFitness << "]" << endl;
-        
-        // display video of simulation
-        if (make_interval_video)
-        {
-            bool finalGeneration = (update == totalGenerations);
-            
-            if (update % make_video_frequency == 0 || finalGeneration)
-            {
-                string bestString = game->executeGame(swarmAgents, NULL, true, collision, startingDist, killDelay);
-                
-                if (finalGeneration)
-                {
-                    bestString.append("X");
-                }
-                
-                doBroadcast(bestString);
-            }
-        }
-        
-        
-		for(int i = 0; i < populationSize; ++i)
+      // display every swarm file
+      for (map< int, vector<string> >::iterator it = fileNameMap.begin(), end = fileNameMap.end(); it != end; )
+	{
+	  if (it->second[0] != "")
+	    {
+	      cout << "building video for run " << it->first << endl;
+              
+	      swarmAgent->loadAgent((char *)it->second[0].c_str());
+              
+	      // build clone swarm from the swarm agent brain
+	      vector<tAgent*> cloneSwarm;
+              
+	      for (int j = 0; j < populationSize; ++j)
 		{
-            // construct swarm agent population for the next generation
-			tAgent *offspring = new tAgent;
-            int j = 0;
-            
-			do
-            {
-                j = rand() % populationSize;
-            } while((j == i) || (randDouble > (swarmAgents[j]->fitness / swarmMaxFitness)));
-            
-			offspring->inherit(swarmAgents[j], perSiteMutationRate, update);
-			SANextGen[i] = offspring;
+		  tAgent *cloneAgent = new tAgent;
+		  cloneAgent->inherit(swarmAgent, 0.0, 0);
+		  cloneSwarm.push_back(cloneAgent);
 		}
-        
-        // shuffle the population to keep it well-mixed
-        random_shuffle(SANextGen.begin(), SANextGen.end());
-        
-		for(int i = 0; i < populationSize; ++i)
-        {
-            // retire and replace the swarm agents from the previous generation
-			swarmAgents[i]->retire();
-			swarmAgents[i]->nrPointingAtMe--;
-			if(swarmAgents[i]->nrPointingAtMe == 0)
-            {
-				delete swarmAgents[i];
-            }
-			swarmAgents[i] = SANextGen[i];
+                
+	      string bestString = findBestRun(cloneSwarm);
+              
+	      cout << "displaying video for run " << it->first << endl;
+                
+	      if ( (++it) == end )
+		{
+		  bestString.append("X");
 		}
+                
+	      doBroadcast(bestString);
+	    }
+	  else
+	    {
+	      cerr << "unmatched file: " << it->second[0] << endl;
+	    }
+	}
         
-		swarmAgents = SANextGen;
-        
-        if (track_best_brains && update % track_best_brains_frequency == 0)
+      exit(0);
+    }
+    
+  if (make_logic_table)
+    {
+      swarmAgent->saveLogicTable(logicTableFileName.c_str());
+      exit(0);
+    }
+  
+  if (make_dot)
+    {
+      swarmAgent->saveToDot(swarmDotFileName.c_str());
+      exit(0);
+    }
+  
+  // seed the agents
+  delete swarmAgent;
+  swarmAgent = new tAgent;
+  swarmAgent->setupRandomAgent(5000);
+  //swarmAgent->loadAgent((char *)"startSwarm.genome");
+  
+  // make mutated copies of the start genome to fill up the initial population
+  for(int i = 0; i < populationSize; ++i)
+    {
+      swarmAgents[i] = new tAgent;
+      swarmAgents[i]->inherit(swarmAgent, 0.01, 1);
+    }
+  
+  SANextGen.resize(populationSize);
+  
+  swarmAgent->nrPointingAtMe--;
+  
+  cout << "setup complete" << endl;
+  cout << "starting evolution" << endl;
+  
+  FILE *LOD = fopen(LODFileName.c_str(), "w");
+  
+  fprintf(LOD, "generation,deme,fitness,num_collisions\n");
+  fflush(LOD);
+  string videoData="";
+  // main loop
+  for (int update = 2; update <= totalGenerations; ++update)
+    {
+      // reset fitnesses
+      for (int i = 0; i < populationSize; ++i)
         {
-            stringstream sss;
-            
-            sss << "swarm" << update << ".genome";
-            
-            swarmAgents[0]->ancestor->ancestor->saveGenome(sss.str().c_str());
-        }
+	  swarmAgents[i]->fitness = 0.0;
+	  //swarmAgents[i]->fitnesses.clear();
+	}
+      
+      // determine fitness of population
+      // swarmMaxFitness = 0.0;
+      // double swarmMinFitness = 1000000;//swarmAgents[1]->fitness;
+      // double swarmAvgFitness = 0.0;
+      
+      // evaluate entire swarm population
+      
+      string bestString="";
+      double maxSwarmFitness=0.0;
+      int bestDeme=0;
+      bool bestSwarmReport;
+      for (int deme=0; deme < numberOfDemes; deme++){
+	vector<tAgent*>::const_iterator swarmAgentsInit = swarmAgents.begin() + deme*swarmSize;
+	vector<tAgent*>::const_iterator swarmAgentsFin = swarmAgents.begin() + (deme+1)*swarmSize;
+	vector<tAgent*> subPop(swarmAgentsInit, swarmAgentsFin);
+	bool reportVideo = false;
+	long numberCollision;
+	double avgSwarmFitness;
+        videoData = game -> executeGame(subPop, LOD, reportVideo, numberCollision, avgSwarmFitness, killDelay, deme);
+	fprintf(LOD, "%i, %i, %f, %i\n", update, deme, avgSwarmFitness, numberCollision);
+	fflush(LOD);
+/*	if (reportVideo == true){
+	  ostringstream fname;
+	  ofstream trajectory;
+	  fname << "data/trac_" << update << "_" << deme  << ".csv";
+	  trajectory.open(fname.str().c_str());
+	  trajectory << videoData;
+	  trajectory.close();
+	}*/
+	if (avgSwarmFitness > maxSwarmFitness){
+	  maxSwarmFitness = avgSwarmFitness;
+	  bestString = videoData;
+	  bestDeme = deme;
+	  bestSwarmReport = reportVideo;
+	}
+      }
+      if (bestSwarmReport == true){
+          ostringstream fname;
+          ofstream trajectory;
+          fname << "data/trac_" << update << "_" << bestDeme  << ".csv";
+          trajectory.open(fname.str().c_str());
+          trajectory << bestString;
+          trajectory.close();
+      }
+	    
+      // determine fitness of population
+      swarmMaxFitness = swarmAgents[0]->fitness;
+      double swarmMinFitness = swarmAgents[0]->fitness;
+      double swarmAvgFitness = 0.0;
+      // compute fitness statistics for swarm
+      for (int i = 0; i < populationSize; ++i)
+	{
+	  swarmAvgFitness += swarmAgents[i]->fitness;
+	  
+	  if (swarmAgents[i]->fitness < swarmMinFitness){
+	    swarmMinFitness = swarmAgents[i]->fitness;
+	  }
+	  
+	  if (swarmAgents[i]->fitness > swarmMaxFitness)
+	    {
+	      swarmMaxFitness = swarmAgents[i]->fitness;
+	    }
+	}
+      
+      swarmAvgFitness /= (double)populationSize;
+	    
+      cout << "generation " << update << ": swarm [" << swarmAvgFitness << " : " << swarmMaxFitness << " : " << swarmMinFitness << "]" << endl;
+
+      // display video of simulation
+      if (make_interval_video)
+	{
+	  /*	  bool finalGeneration = (update == totalGenerations);
+	  
+	  if (update % make_video_frequency == 0 || finalGeneration)
+	    {
+	      for (int deme=0; deme<numberOfDemes; deme++)//AT
+		string bestString = game->executeGame(swarmAgents, NULL, true, collision, startingDist, killDelay, deme);//AT
+		    
+	      if (finalGeneration)
+		{
+		  bestString.append("X");
+		}
+		    
+	      doBroadcast(bestString);
+	      }*/
+	}
+	    
+	    
+      for(int i = 0; i < populationSize; ++i)
+	{
+	  // construct swarm agent population for the next generation
+	  tAgent *offspring = new tAgent;
+	  int j = 0;
+		
+	  do
+	    {
+	      j = rand() % populationSize;
+	    } while((j == i) || (randDouble > (swarmAgents[j]->fitness / swarmMaxFitness)));
+	  
+	  offspring->inherit(swarmAgents[j], perSiteMutationRate, update);
+	  SANextGen[i] = offspring;
+	}
+	    
+      // shuffle the population to keep it well-mixed
+      random_shuffle(SANextGen.begin(), SANextGen.end());
+	    
+      for(int i = 0; i < populationSize; ++i)
+	{
+	  // retire and replace the swarm agents from the previous generation
+	  swarmAgents[i]->retire();
+	  swarmAgents[i]->nrPointingAtMe--;
+	  if(swarmAgents[i]->nrPointingAtMe == 0)
+	    {
+	      delete swarmAgents[i];
+	    }
+	  swarmAgents[i] = SANextGen[i];
+	}
+	    
+      swarmAgents = SANextGen;
+      
+      if (track_best_brains && update % track_best_brains_frequency == 0)
+	{
+	  stringstream sss;
+	  
+	  sss << "swarm" << update << ".genome";
+		
+	  swarmAgents[0]->ancestor->ancestor->saveGenome(sss.str().c_str());
+	}
     }
 	
-    // save the genome file of the lmrca
-	swarmAgents[0]->ancestor->ancestor->saveGenome(swarmGenomeFileName.c_str());
-    fclose(LOD);
-    
-    return 0;
+  // save the genome file of the lmrca
+  swarmAgents[0]->ancestor->ancestor->saveGenome(swarmGenomeFileName.c_str());
+  fclose(LOD);
+  
+  return 0;
 }
 
 string findBestRun(vector<tAgent*> swarmAgents)
 {
-    string reportString = "", bestString = "";
-    double bestFitness = 0.0;
-    
-    for (int rep = 0; rep < 100; ++rep)
+  string reportString = "", bestString = "";
+  double bestFitness = 0.0;
+  bool findBestRunReport = true;
+  
+  for (int rep = 0; rep < 100; ++rep)
     {
-        reportString = game->executeGame(swarmAgents, NULL, true, collision, startingDist, killDelay);
-        
-        double swarmFitness = 0.0;
-        
-        for (int i = 0; i < swarmSize; ++i)
+      //AT->
+      long numberCollision;
+      double avgSwarmFitness;
+      double avgPopulationFitness = 0.0;
+      double bestDemeFitness = 0.0;
+      for (int deme=0; deme<numberOfDemes; deme++){
+	reportString = game->executeGame(swarmAgents, NULL, findBestRunReport, numberCollision, avgSwarmFitness, killDelay, deme);
+	if (avgSwarmFitness>bestDemeFitness){
+	  bestString = reportString;
+	avgPopulationFitness += avgSwarmFitness;
+	}
+      }
+      avgPopulationFitness = avgSwarmFitness/(double)numberOfDemes;
+      //<-AT
+      /*
+      double swarmFitness = 0.0;
+      for (int i = 0; i < populationSize; ++i)
         {
-            swarmFitness += swarmAgents[i]->fitness;
+	  swarmFitness += swarmAgents[i]->fitness;
         }
-        
-        swarmFitness /= (double)swarmSize;
-        
-        if (swarmFitness > bestFitness)
+      
+      swarmFitness /= (double)populationSize;
+      
+      if (swarmFitness > bestFitness)
         {
             bestString = reportString;
             bestFitness = swarmFitness;
-        }
+	    }*/
     }
-    
-    return bestString;
+  
+  return bestString;
 }
 
 void setupBroadcast(void){
-	/*
+  /*
     port = ECHO_PORT;
-	if ( (list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
+    if ( (list_s = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
     {
-		fprintf(stderr, "ECHOSERV: Error creating listening socket.\n");
+    fprintf(stderr, "ECHOSERV: Error creating listening socket.\n");
     }
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family      = AF_INET;
@@ -550,26 +598,26 @@ void setupBroadcast(void){
     servaddr.sin_port        = htons(port);
     if ( bind(list_s, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0 )
     {
-		fprintf(stderr, "ECHOSERV: Error calling bind()\n");
+    fprintf(stderr, "ECHOSERV: Error calling bind()\n");
     }
     if ( listen(list_s, LISTENQ) < 0 )
     {
-		fprintf(stderr, "ECHOSERV: Error calling listen()\n");
+    fprintf(stderr, "ECHOSERV: Error calling listen()\n");
     }
 	 */
 }
 
 void doBroadcast(string data){
-	/*
+  /*
     if ( (conn_s = accept(list_s, NULL, NULL) ) < 0 )
     {
         fprintf(stderr, "ECHOSERV: Error calling accept()\n");
-    }
-    Writeline(conn_s, data.c_str(), data.length());
+	}
+	Writeline(conn_s, data.c_str(), data.length());
     
-    if ( close(conn_s) < 0 )
+	if ( close(conn_s) < 0 )
     {
-        fprintf(stderr, "ECHOSERV: Error calling close()\n");
+    fprintf(stderr, "ECHOSERV: Error calling close()\n");
     }
-	 */
+  */
 }

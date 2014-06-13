@@ -29,10 +29,10 @@ tAgent::tAgent(){
 	nrPointingAtMe=1;
 	ancestor = NULL;
 	for(int i=0;i<maxNodes;i++)
-    {
-		states[i]=0;
-		newStates[i]=0;
-	}
+	  {
+	    states[i]=0;
+	    newStates[i]=0;
+	  }
 	bestSteps=-1;
 	saved=false;
 	hmmus.clear();
@@ -48,18 +48,18 @@ tAgent::tAgent(){
 tAgent::~tAgent()
 {
 	for (int i = 0; i < hmmus.size(); ++i)
-    {
-        delete hmmus[i];
-    }
+	  {
+	    delete hmmus[i];
+	  }
     
 	if (ancestor!=NULL)
-    {
-		ancestor->nrPointingAtMe--;
-		if (ancestor->nrPointingAtMe == 0)
-        {
-			delete ancestor;
-        }
-	}
+	  {
+	    ancestor->nrPointingAtMe--;
+	    if (ancestor->nrPointingAtMe == 0)
+	      {
+		delete ancestor;
+	      }
+	  }
 #ifdef useANN
 	delete ANN;
 #endif
@@ -181,31 +181,31 @@ void tAgent::setupPhenotype(void)
 	int i;
 	tHMMU *hmmu;
 	if(hmmus.size()!=0)
-    {
-		for(i=0;i<hmmus.size();i++)
-        {
-			delete hmmus[i];
-        }
-    }
+	  {
+	    for(i=0;i<hmmus.size();i++)
+	      {
+		delete hmmus[i];
+	      }
+	  }
 	hmmus.clear();
 	for(i=0;i<genome.size();i++)
-    {
-		if((genome[i]==42)&&(genome[(i+1)%genome.size()]==(255-42)))
-        {
-			hmmu=new tHMMU;
-			//hmmu->setupQuick(genome,i);
-			hmmu->setup(genome,i);
-			hmmus.push_back(hmmu);
-		}
-        /*
-		if((genome[i]==43)&&(genome[(i+1)%genome.size()]==(255-43))){
-			hmmu=new tHMMU;
-			//hmmu->setup(genome,i);
-			hmmu->setupQuick(genome,i);
-			hmmus.push_back(hmmu);
-		}
-         */
-	}
+	  {
+	    if((genome[i]==42)&&(genome[(i+1)%genome.size()]==(255-42)))
+	      {
+		hmmu=new tHMMU;
+		//hmmu->setupQuick(genome,i);
+		hmmu->setup(genome,i);
+		hmmus.push_back(hmmu);
+	      }
+	    /*
+	      if((genome[i]==43)&&(genome[(i+1)%genome.size()]==(255-43))){
+	      hmmu=new tHMMU;
+	      //hmmu->setup(genome,i);
+	      hmmu->setupQuick(genome,i);
+	      hmmus.push_back(hmmu);
+	      }
+	    */
+	  }
 }
 void tAgent::setupMegaPhenotype(int howMany)
 {
@@ -213,29 +213,29 @@ void tAgent::setupMegaPhenotype(int howMany)
 	tHMMU *hmmu;
     
 	if(hmmus.size() > 0)
-    {
-		for(vector<tHMMU*>::iterator it = hmmus.begin(), end = hmmus.end(); it != end; ++it)
-        {
-			delete *it;
-        }
-    }
+	  {
+	    for(vector<tHMMU*>::iterator it = hmmus.begin(), end = hmmus.end(); it != end; ++it)
+	      {
+		delete *it;
+	      }
+	  }
 	hmmus.clear();
 	for(i=0;i<genome.size();i++)
-    {
-		if((genome[i]==42)&&(genome[(i+1)%genome.size()]==(255-42)))
-        {
-            for(j=0;j<howMany;j++)
-            {
-                hmmu=new tHMMU;
-                hmmu->setup(genome, i);
-                //hmmu->setupQuick(genome,i);
-                for(int k=0;k<4;k++){
-                    hmmu->ins[k]+=(j*maxNodes);
-                    hmmu->outs[k]+=(j*maxNodes);
-                }
-                hmmus.push_back(hmmu);
-            }
-        }
+	  {
+	    if((genome[i]==42)&&(genome[(i+1)%genome.size()]==(255-42)))
+	      {
+		for(j=0;j<howMany;j++)
+		  {
+		    hmmu=new tHMMU;
+		    hmmu->setup(genome, i);
+		    //hmmu->setupQuick(genome,i);
+		    for(int k=0;k<4;k++){
+		      hmmu->ins[k]+=(j*maxNodes);
+		      hmmu->outs[k]+=(j*maxNodes);
+		    }
+		    hmmus.push_back(hmmu);
+		  }
+	      }
         /*
          if((genome[i]==43)&&(genome[(i+1)%genome.size()]==(255-43))){
          hmmu=new tHMMU;
@@ -244,7 +244,7 @@ void tAgent::setupMegaPhenotype(int howMany)
          hmmus.push_back(hmmu);
          }
          */
-	}
+	  }
     
 }
 
